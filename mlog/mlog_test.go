@@ -20,8 +20,18 @@ import (
 	"testing"
 )
 
-func TestLog1(t *testing.T) {
+func TestOne(t *testing.T) {
 
+}
+
+func ExampleUse() {
+
+	Info("%s", "Hello Info")
+	Debug("%s", "Hello Debug")
+	Alarm("%s", "Hello Alarm")
+	Event("%s", "Hello Event")
+
+	// Output:
 }
 
 /*

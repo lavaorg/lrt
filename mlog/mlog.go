@@ -41,7 +41,7 @@ type Ext struct {
 	App          string `default:"noapp"`
 	Group        string `default:"nogroup"`
 	CorelationId string `default:"0" desc: "correlates across multiple apps"`
-	TaskId       string `default:"none" desc:"an orchestrator's id if any"`
+	TaskId       string `default:"-" desc:"an orchestrator's id if any"`
 	Debug        bool   `default:false`
 }
 
@@ -71,6 +71,7 @@ func initialize() {
 
 	// force all golog logging to this logger
 	log.SetOutput(gologWriter)
+	log.SetFlags(0) // mlog will get date/time + other information
 }
 
 // StatWriter
