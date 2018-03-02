@@ -1,6 +1,5 @@
-// derived from github.com/kelseyhightower/envconfig
 // Original: Copyright(C) Kelsey Hightower, all rights reserved
-// derivation: Copyright(C) Larry Rau. all rights reserved
+// derivation: Copyright 2018 Larry Rau. all rights reserved
 // see LICENSE below.
 
 package env

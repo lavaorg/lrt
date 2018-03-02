@@ -26,19 +26,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
-)
 
-var (
-	name         string
-	application  string
-	group        string
-	pid          string
-	corelationid string
-	mesostaskid  string
-	severity     uint8
-
-	statWriter  StatWriter
-	gologWriter GologWriter
+	"github.com/lavaorg/lrt/env"
 )
 
 const (
@@ -47,43 +36,38 @@ const (
 	Separator = "|"
 )
 
+// information from the environment
+type Ext struct {
+	App          string `default:"noapp"`
+	Group        string `default:"nogroup"`
+	CorelationId string `default:"0" desc: "correlates across multiple apps"`
+	TaskId       string `default:"none" desc:"an orchestrator's id if any"`
+	Debug        bool   `default:false`
+}
+
+var (
+	ext         Ext    // external descriptive info
+	name        string // process name
+	pid         string // os pid
+	statWriter  StatWriter
+	gologWriter GologWriter
+)
+
 // log initialized at init time
 func init() { initialize() }
 
-// split for sake of log_test
 func initialize() {
+
+	err := env.Load("lrt", &ext)
+	if err != nil {
+		log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+		log.Fatalf("coul not load mlog env vars:%v", err)
+	}
 
 	// determine basic application information
 	pathx := strings.Split(os.Args[0], "/")
-	namex := pathx[len(pathx)-1]
-
-	// pull environment variables
-	application = os.Getenv("LRT_APP")
-	if application == "" {
-		application = namex
-	}
-	group = os.Getenv("LRT_GROUP")
-	if group == "" {
-		group = "/" //root group
-	}
-	corelationid = os.Getenv("LRT_CORELATIONID")
-	if corelationid == "" {
-		corelationid = "0"
-	}
-
-	mesostaskid = os.Getenv("LRT_TASK_ID") //any orchestator task id
-	if mesostaskid == "" {
-		mesostaskid = "0"
-	}
-
-	// initialize log
-	name = namex
+	name = pathx[len(pathx)-1]
 	pid = strconv.Itoa(os.Getpid())
-	severity = INFO
-	debug := strings.ToLower(os.Getenv("LRT_ENABLE_DEBUG"))
-	if debug == "true" {
-		EnableDebug(true)
-	}
 
 	// force all golog logging to this logger
 	log.SetOutput(gologWriter)
@@ -189,13 +173,6 @@ var (
 	}
 )
 
-// Severity
-// Returns the severity level
-func Severity() uint8 {
-	return severity
-}
-
-// GetStatWriter
 // Return a stat-specific io.Writer
 func GetStatWriter() io.Writer {
 	return statWriter
@@ -203,71 +180,49 @@ func GetStatWriter() io.Writer {
 
 // Enable Debug Messaging
 func EnableDebug(flag bool) {
-	if flag {
-		severity = DEBUG
-	} else {
-		severity = EVENT
-	}
+	ext.Debug = flag
 }
 
-// Debug
-// emit using the debug severity level, the only
+// Emit using the debug severity level, the only
 // optional severity level (see EnableDebug)
 func Debug(template string, args ...interface{}) {
-	if severity >= DEBUG {
-		emit(DEBUG, "", 0, template, args...)
+	if ext.Debug {
+		Emit(DEBUG, fmt.Sprintf(template, args))
 	}
 }
 
-// Event
-// emit using the event severity level
+// Emit using the event severity level
 func Event(template string, args ...interface{}) {
-	emit(EVENT, "", 0, template, args...)
+	Emit(EVENT, fmt.Sprintf(template, args))
 }
 
-// Info
-// emit using the info severity level
+// Emit using the info severity level
 func Info(template string, args ...interface{}) {
-	emit(INFO, "", 0, template, args...)
+	Emit(INFO, fmt.Sprintf(template, args))
 }
 
-// Stat
-// emit using the stat severity level
+// Emit using the stat severity level
 func Stat(template string, args ...interface{}) {
-	emit(STAT, "", 0, template, args...)
+	Emit(STAT, fmt.Sprintf(template, args))
 }
 
-// Error
-// emit using the err severity level
+// Emit using the err severity level
 func Error(template string, args ...interface{}) {
-	emit(ERROR, "", 0, template, args...)
+	Emit(ERROR, fmt.Sprintf(template, args))
 }
 
-// Alarm
-// emit using the alarm severity level
+// Emit using the alarm severity level
 func Alarm(template string, args ...interface{}) {
-	emit(ALARM, "", 0, template, args...)
+	Emit(ALARM, fmt.Sprintf(template, args))
 }
 
-// ** DEPRECATED
-// Emit
-func Emit(s uint8, m string) {
-	if severity >= s {
-		emit(s, "", 0, m)
-	}
-}
-
-// emit
-func emit(severity uint8, file string, line int, template string, args ...interface{}) {
+func Emit(severity uint8, m string) {
 
 	// get caller statistics
-	if file == "" {
-		ok := false
-		_, file, line, ok = runtime.Caller(2)
-		if !ok {
-			file = "???"
-			line = 0
-		}
+	_, file, line, ok := runtime.Caller(2)
+	if !ok {
+		file = "???"
+		line = 0
 	}
 
 	// determine the shorted-version of the filename
@@ -280,16 +235,17 @@ func emit(severity uint8, file string, line int, template string, args ...interf
 		}
 	}
 	file = short
+
+	emit(severity, file, line, m)
+}
+
+func emit(severity uint8, file string, line int, m string) {
+
 	linx := strconv.Itoa(line)
 	fileAndLine := strings.Join([]string{file, linx}, ":")
 
-	// parse formatted string or use the given template
 	// then split into individual lines (by CR)
-	var lines []string
-	if len(args) > 0 {
-		template = fmt.Sprintf(template, args...)
-	}
-	lines = strings.Split(template, "\n")
+	lines := strings.Split(m, "\n")
 
 	// format each message from caller statistics
 	// and output to the correct stream
@@ -302,12 +258,12 @@ func emit(severity uint8, file string, line int, template string, args ...interf
 		Marker,
 		Version,
 		SeverityToString[severity],
-		mesostaskid,
+		ext.TaskId,
 		pid,
-		group,
-		application,
+		ext.Group,
+		ext.App,
 		name,
-		corelationid,
+		ext.CorelationId,
 		fileAndLine,
 		timestamp,
 	}, Separator)
