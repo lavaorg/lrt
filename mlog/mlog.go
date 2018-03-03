@@ -143,33 +143,33 @@ func EnableDebug(flag bool) {
 // Emit debug message if global debug flag set
 func Debug(template string, args ...interface{}) {
 	if ext.Debug {
-		Emit(DEBUG, fmt.Sprintf(template, args))
+		Emit(DEBUG, fmt.Sprintf(template, args...))
 	}
 }
 
 // Emit an Event message
 func Event(template string, args ...interface{}) {
-	Emit(EVENT, fmt.Sprintf(template, args))
+	Emit(EVENT, fmt.Sprintf(template, args...))
 }
 
 // Emit an Info message
 func Info(template string, args ...interface{}) {
-	Emit(INFO, fmt.Sprintf(template, args))
+	Emit(INFO, fmt.Sprintf(template, args...))
 }
 
 // Emit a Stat message
 func Stat(template string, args ...interface{}) {
-	Emit(STAT, fmt.Sprintf(template, args))
+	Emit(STAT, fmt.Sprintf(template, args...))
 }
 
 // Emit an Error message
 func Error(template string, args ...interface{}) {
-	Emit(ERROR, fmt.Sprintf(template, args))
+	Emit(ERROR, fmt.Sprintf(template, args...))
 }
 
 // Emit using the alarm severity level
 func Alarm(template string, args ...interface{}) {
-	Emit(ALARM, fmt.Sprintf(template, args))
+	Emit(ALARM, fmt.Sprintf(template, args...))
 }
 
 // Emit a custom type and message (emits to stdout)
