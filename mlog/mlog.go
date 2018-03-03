@@ -19,7 +19,6 @@ package mlog
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"runtime"
@@ -31,26 +30,51 @@ import (
 )
 
 const (
-	Version   = "1"
-	Marker    = "*"
-	Separator = "|"
+	cversion     = "1"
+	cmarker      = "*" + cversion
+	cseparator   = "|"
+	ctmformat    = "2006/01/02 15:04:05.999999"
+	ctmformatlen = len(ctmformat)
 )
 
 // information from the environment
 type Ext struct {
-	App          string `default:"noapp"`
-	Group        string `default:"nogroup"`
 	CorelationId string `default:"0" desc: "correlates across multiple apps"`
-	TaskId       string `default:"-" desc:"an orchestrator's id if any"`
 	Debug        bool   `default:false`
+	MlogSuppress bool   `default:false`
 }
 
+// Severity Enumeration
+const (
+	ALARM uint8 = iota
+	ERROR
+	STAT
+	EVENT
+	INFO
+	DEBUG
+	UNKNOWN
+)
+
 var (
-	ext         Ext    // external descriptive info
-	name        string // process name
-	pid         string // os pid
-	statWriter  StatWriter
-	gologWriter GologWriter
+	ext  Ext    // external descriptive info
+	name string // process name
+	pid  string // os pid
+	mlw  mlogwriter
+
+	// these must be initialized early
+	stderr = os.Stderr
+	stdout = os.Stdout
+
+	// map sev enum to strings
+	sevstr []string = []string{
+		"ALARM",
+		"ERROR",
+		"STAT",
+		"EVENT",
+		"INFO",
+		"DEBUG",
+		"UNKNOWN",
+	}
 )
 
 // log initialized at init time
@@ -58,54 +82,27 @@ func init() { initialize() }
 
 func initialize() {
 
-	err := env.Load("lrt", &ext)
-	if err != nil {
-		log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-		log.Fatalf("coul not load mlog env vars:%v", err)
-	}
-
 	// determine basic application information
 	pathx := strings.Split(os.Args[0], "/")
 	name = pathx[len(pathx)-1]
 	pid = strconv.Itoa(os.Getpid())
 
+	err := env.Load("lrt", &ext)
+	if err != nil {
+		Emit(ERROR, "could not get env vars:"+err.Error())
+		os.Exit(1)
+	}
+
 	// force all golog logging to this logger
-	log.SetOutput(gologWriter)
+	log.SetOutput(mlw)
 	log.SetFlags(0) // mlog will get date/time + other information
 }
 
-// StatWriter
-type StatWriter int
-
-// Write
-// stat io.Writer implementation
-func (self StatWriter) Write(buffer []byte) (n int, err error) {
-
-	// evaluate source
-	_, file, line, ok := runtime.Caller(2)
-	if !ok {
-		file = "???"
-		line = 0
-	}
-
-	// emit (always)
-	emit(STAT, file, line, string(buffer))
-
-	// return ok
-	return len(buffer), nil
-}
-
 // GologWriter
-type GologWriter int
+type mlogwriter int
 
-// Write
-// Log io.Writer implementation (used exclusivly by golang log)
-func (self GologWriter) Write(buffer []byte) (n int, err error) {
-
-	// determine appropriate severity based on
-	// buffer content (e.g., panic)
-	// default to info
-	severityx := INFO
+// A Writer to replace the version used by the standard Go log package
+func (mlogwriter) Write(buffer []byte) (n int, err error) {
 
 	// For example, the call stack for log.Printf
 	// call as obtianed from debugTrace is
@@ -117,66 +114,25 @@ func (self GologWriter) Write(buffer []byte) (n int, err error) {
 	//
 	// log.Printf call corresponds to "go/src/log/log:289"
 
+	sev := INFO
 	// evaluate source
-	pc, file, line, ok := runtime.Caller(3)
+	pc, _, _, ok := runtime.Caller(3)
 	if ok {
 		fnName := runtime.FuncForPC(pc).Name()
-		if strings.HasPrefix(fnName, "log.Fatal") ||
-			strings.HasPrefix(fnName, "log.Panic") {
-			severityx = ALARM
+		if strings.HasPrefix(fnName, "log.Fatal") || strings.HasPrefix(fnName, "log.Panic") {
+			sev = ALARM
 		}
 	}
 	// get correct file and line
-	_, file, line, _ = runtime.Caller(4)
-	// emit (always)
-	emit(severityx, file, line, string(buffer))
+	_, file, line, ok := runtime.Caller(4)
+	if !ok {
+		file = "???"
+		line = 0
+	}
+	emit(sev, file, line, string(buffer))
 
 	// return ok
 	return len(buffer), nil
-}
-
-// Severity Enumeration
-const (
-	NOP uint8 = iota
-	ALARM
-	ERROR
-	STAT
-	INFO
-	EVENT
-	DEBUG
-	UNKNOWN
-)
-
-// Severity Conversion Tables
-var (
-	// a conversion table from severity levels to a string
-	SeverityToString []string = []string{
-		"NOP",
-		"ALARM",
-		"ERROR",
-		"STAT",
-		"INFO",
-		"EVENT",
-		"DEBUG",
-		"UNKNOWN",
-	}
-	// a conversion table from severity levels to a stream
-	// this conversion is implemented as a table for the sake of log_test
-	severityToStream []io.Writer = []io.Writer{
-		os.Stdout, // NOP, placed for documentation purposes
-		os.Stderr, // ALARM
-		os.Stderr, // ERROR
-		os.Stderr, // STAT
-		os.Stdout, // INFO
-		os.Stderr, // EVENT
-		os.Stdout, // DEBUG
-		os.Stdout, // UNKNOWN, placed for documentation purposes
-	}
-)
-
-// Return a stat-specific io.Writer
-func GetStatWriter() io.Writer {
-	return statWriter
 }
 
 // Enable Debug Messaging
@@ -184,30 +140,29 @@ func EnableDebug(flag bool) {
 	ext.Debug = flag
 }
 
-// Emit using the debug severity level, the only
-// optional severity level (see EnableDebug)
+// Emit debug message if global debug flag set
 func Debug(template string, args ...interface{}) {
 	if ext.Debug {
 		Emit(DEBUG, fmt.Sprintf(template, args))
 	}
 }
 
-// Emit using the event severity level
+// Emit an Event message
 func Event(template string, args ...interface{}) {
 	Emit(EVENT, fmt.Sprintf(template, args))
 }
 
-// Emit using the info severity level
+// Emit an Info message
 func Info(template string, args ...interface{}) {
 	Emit(INFO, fmt.Sprintf(template, args))
 }
 
-// Emit using the stat severity level
+// Emit a Stat message
 func Stat(template string, args ...interface{}) {
 	Emit(STAT, fmt.Sprintf(template, args))
 }
 
-// Emit using the err severity level
+// Emit an Error message
 func Error(template string, args ...interface{}) {
 	Emit(ERROR, fmt.Sprintf(template, args))
 }
@@ -217,6 +172,7 @@ func Alarm(template string, args ...interface{}) {
 	Emit(ALARM, fmt.Sprintf(template, args))
 }
 
+// Emit a custom type and message (emits to stdout)
 func Emit(severity uint8, m string) {
 
 	// get caller statistics
@@ -225,6 +181,10 @@ func Emit(severity uint8, m string) {
 		file = "???"
 		line = 0
 	}
+	emit(severity, file, line, m)
+}
+
+func emit(sev uint8, file string, line int, m string) {
 
 	// determine the shorted-version of the filename
 	// and avoid the func call of strings.SplitAfter
@@ -237,11 +197,6 @@ func Emit(severity uint8, m string) {
 	}
 	file = short
 
-	emit(severity, file, line, m)
-}
-
-func emit(severity uint8, file string, line int, m string) {
-
 	linx := strconv.Itoa(line)
 	fileAndLine := strings.Join([]string{file, linx}, ":")
 
@@ -250,30 +205,24 @@ func emit(severity uint8, file string, line int, m string) {
 
 	// format each message from caller statistics
 	// and output to the correct stream
-	stream := severityToStream[severity]
+	stream := stderr
+	if sev > EVENT {
+		stream = stdout
+	}
 
-	// create message according to the logging system format specs
-
-	timestamp := time.Now().UTC().Format("2006/01/02 15:04:05.999999999")
-	message := strings.Join([]string{
-		Marker,
-		Version,
-		SeverityToString[severity],
-		ext.TaskId,
-		pid,
-		ext.Group,
-		ext.App,
-		name,
-		ext.CorelationId,
-		fileAndLine,
-		timestamp,
-	}, Separator)
-
+	// create a structured log message to emit
+	message := cmarker
+	if !ext.MlogSuppress {
+		timestamp := time.Now().UTC().Format(ctmformat)
+		message = strings.Join([]string{
+			cmarker, sevstr[sev], ext.CorelationId, pid, name, fileAndLine, timestamp,
+		}, cseparator)
+	}
 	for _, line := range lines {
 		if line == "" {
 			continue
 		}
 		// Write message to stdout or stderr
-		fmt.Fprintln(stream, message+Separator+line)
+		fmt.Fprintln(stream, message+cseparator+line)
 	}
 }

@@ -17,6 +17,7 @@ limitations under the License.
 package mlog
 
 import (
+	"log"
 	"testing"
 )
 
@@ -31,6 +32,7 @@ func ExampleUse() {
 	Alarm("%s", "Hello Alarm")
 	Event("%s", "Hello Event")
 
+	log.Println("show log.Println")
 	// Output:
 }
 
