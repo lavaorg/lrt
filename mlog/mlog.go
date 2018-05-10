@@ -211,13 +211,15 @@ func emit(sev uint8, file string, line int, m string) {
 	}
 
 	// create a structured log message to emit
-	message := cmarker
-	if !ext.MlogSuppress {
+	var message string 
+	if ext.MlogSuppress {
+		message = strings.Join([]string{cmarker,sevstr[sev]},cseparator)
+	} else {
 		timestamp := time.Now().UTC().Format(ctmformat)
 		message = strings.Join([]string{
 			cmarker, sevstr[sev], ext.CorelationId, pid, name, fileAndLine, timestamp,
 		}, cseparator)
-	}
+	} 
 	for _, line := range lines {
 		if line == "" {
 			continue
