@@ -130,7 +130,9 @@ func gatherInfo(prefix string, spec interface{}) ([]varInfo, error) {
 	return infos, nil
 }
 
-// Process populates the specified struct based on environment variables
+// Process populates the specified struct based on environment variables.
+// Environment variables should be all CAPITAL LETTERS of the form:
+//   ToUpper({prefix}_{envvarident})
 func Load(prefix string, spec interface{}) error {
 	infos, err := gatherInfo(prefix, spec)
 

@@ -89,7 +89,7 @@ func initialize() {
 
 	err := env.Load("lrt", &ext)
 	if err != nil {
-		Emit(ERROR, "could not get env vars:"+err.Error())
+		Emit(0, ERROR, "could not get env vars:"+err.Error())
 		os.Exit(1)
 	}
 
@@ -143,40 +143,40 @@ func EnableDebug(flag bool) {
 // Emit debug message if global debug flag set
 func Debug(template string, args ...interface{}) {
 	if ext.Debug {
-		Emit(DEBUG, fmt.Sprintf(template, args...))
+		Emit(1, DEBUG, fmt.Sprintf(template, args...))
 	}
 }
 
 // Emit an Event message
 func Event(template string, args ...interface{}) {
-	Emit(EVENT, fmt.Sprintf(template, args...))
+	Emit(1, EVENT, fmt.Sprintf(template, args...))
 }
 
 // Emit an Info message
 func Info(template string, args ...interface{}) {
-	Emit(INFO, fmt.Sprintf(template, args...))
+	Emit(1, INFO, fmt.Sprintf(template, args...))
 }
 
 // Emit a Stat message
 func Stat(template string, args ...interface{}) {
-	Emit(STAT, fmt.Sprintf(template, args...))
+	Emit(1, STAT, fmt.Sprintf(template, args...))
 }
 
 // Emit an Error message
 func Error(template string, args ...interface{}) {
-	Emit(ERROR, fmt.Sprintf(template, args...))
+	Emit(1, ERROR, fmt.Sprintf(template, args...))
 }
 
 // Emit using the alarm severity level
 func Alarm(template string, args ...interface{}) {
-	Emit(ALARM, fmt.Sprintf(template, args...))
+	Emit(1, ALARM, fmt.Sprintf(template, args...))
 }
 
 // Emit a custom type and message (emits to stdout)
-func Emit(severity uint8, m string) {
-
+// lev is file:line in call stack to emit
+func Emit(lev int, severity uint8, m string) {
 	// get caller statistics
-	_, file, line, ok := runtime.Caller(2)
+	_, file, line, ok := runtime.Caller(lev + 1)
 	if !ok {
 		file = "???"
 		line = 0
@@ -211,15 +211,15 @@ func emit(sev uint8, file string, line int, m string) {
 	}
 
 	// create a structured log message to emit
-	var message string 
+	var message string
 	if ext.MlogSuppress {
-		message = strings.Join([]string{cmarker,sevstr[sev]},cseparator)
+		message = strings.Join([]string{cmarker, sevstr[sev]}, cseparator)
 	} else {
 		timestamp := time.Now().UTC().Format(ctmformat)
 		message = strings.Join([]string{
 			cmarker, sevstr[sev], ext.CorelationId, pid, name, fileAndLine, timestamp,
 		}, cseparator)
-	} 
+	}
 	for _, line := range lines {
 		if line == "" {
 			continue
